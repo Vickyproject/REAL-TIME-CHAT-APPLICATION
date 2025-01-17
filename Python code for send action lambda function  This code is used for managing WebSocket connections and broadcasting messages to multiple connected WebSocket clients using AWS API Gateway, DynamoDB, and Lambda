@@ -1,0 +1,64 @@
+import json
+import boto3
+import os
+
+# Initialize DynamoDB client
+dynamodb = boto3.client('dynamodb')
+
+def lambda_handler(event, context):
+    try:
+        # Validate if 'body' exists in the event payload
+        if 'body' not in event:
+            raise KeyError("Missing 'body' in the event payload")
+        
+        # Parse the incoming message from the request body
+        body = json.loads(event['body'])
+        if 'message' not in body:
+            raise KeyError("Missing 'message' in the body")
+        
+        message = body['message']
+        
+        # Initialize a paginator for scanning the DynamoDB table
+        paginator = dynamodb.get_paginator('scan')
+        
+        # List to hold all connection IDs
+        connection_ids = []
+        
+        # Get the API Gateway Management API client
+        apigatewaymanagementapi = boto3.client(
+            'apigatewaymanagementapi',
+            endpoint_url="https://" + event["requestContext"]["domainName"] + "/" + event["requestContext"]["stage"]
+        )
+        
+        # Retrieve all connection IDs from the DynamoDB table
+        for page in paginator.paginate(TableName=os.environ['WEBSOCKET_TABLE']):
+            connection_ids.extend(page['Items'])
+        
+        # Post the message to each connection ID
+        for connection_id in connection_ids:
+            try:
+                apigatewaymanagementapi.post_to_connection(
+                    Data=message,
+                    ConnectionId=connection_id['connectionid']['S']  # Correct key structure
+                )
+            except Exception as e:
+                print(f"Failed to post to connection {connection_id['connectionid']['S']}: {str(e)}")
+        
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"message": "Message sent to all connections successfully"})
+        }
+    except KeyError as ke:
+        # Handle missing keys
+        print(f"KeyError: {str(ke)}")
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": str(ke)})
+        }
+    except Exception as e:
+        # Handle unexpected errors
+        print(f"Error: {str(e)}")
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }
