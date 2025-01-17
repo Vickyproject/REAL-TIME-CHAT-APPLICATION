@@ -1,0 +1,33 @@
+import json
+import boto3
+import os
+
+# Initialize DynamoDB client
+dynamodb = boto3.client('dynamodb')
+
+def lambda_handler(event, context):
+    try:
+        # Extract the connection ID from the event
+        connection_id = event['requestContext']['connectionId']
+        
+        # Get the table name from environment variables
+        table_name = os.environ['WEBSOCKET_TABLE']
+        
+        # Add the connection ID to the DynamoDB table
+        dynamodb.put_item(
+            TableName=table_name,
+            Item={'connectionid': {'S': connection_id}}
+        )
+        
+        # Return a success response
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"message": "Connection ID saved successfully"})
+        }
+    except Exception as e:
+        # Log the error and return a failure response
+        print(f"Error: {str(e)}")
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        } 
